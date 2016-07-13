@@ -6,13 +6,14 @@ c ---------------------------------------------------------
       
       parameter( maxm=100, maxntids=8)
       integer i, info, nproc, nhost, msgtype
-      integer mytid, iptid,numt,filasproc,resto,numfilas
+      integer mytid, iptid,numt,filasproc,resto,numfilas,gnum
 	  real*8 A(maxm,maxm)
 	  real*8 b(maxm)
 	  real*8 diag(maxm)
 	  integer m,n, filaini, filafin, k
 	  integer tids(maxntids)
 	  real*8 bk,diagk
+	  real*8 sum
 	  real*8 xsol(maxm),x(maxm)
 
 	  
@@ -21,49 +22,32 @@ c     ----------------------------------------
 	  call pvmfmytid( mytid )
 c     preguntamos por el proceso padre
 	  call pvmfparent( iptid )
-	  call pvmfjoingroup('jacobi',gnum)
+	  call pvmfjoingroup('test',gnum)
+	  print *, 'Mi tid es ', mytid,' y mi numero en el grupo es ',gnum, 'mi padre es', iptid
 	  CALL pvmfcatchout( 1, info )
 c 	  Inicializamos resto para los procesos hijos
 	  resto = 0
-      print *, iptid
-      if( iptid .ne. PvmNoParent ) then
+      print *,'Tengo padre:', iptid, pvmnoparent
 
-c 	    Recibimos los datos
-		call pvmfrecv(iptid)
-		call pvmfunpack(INTEGER4,filaini,1,1,info)
-		call pvmfunpack(INTEGER4,filafin,1,1,info)
-		filasproc = filafin - filaini
-		call pvmfpack(INTEGER4,n,1,1,info)
-		do j=filaini,filafin
-				call pvmfunpack (REAL8,A(filaini,1),n,maxm,info)
-				call pvmfunpack (REAL8,b(filaini),1,1,info)
-				call pvmfunpack (REAL8,diag(filaini),1,1,info)
-		enddo
-	   
-c     Si tiene padre hacemos el proceso de los hijos  
-	  else
+
+      if (iptid.eq.pvmnoparent) then
 c	  Si no tiene padre hacemos el proceso principal 
 c	  Leemos los inputs
 	    print *,'Numero de filas'
-        read *, n
-		
- 	    call construirDatos(n,A,b,maxm)
-	 
+        read *, n		
+ 	    call construirDatos(n,A,b,diag)
 		call pvmfspawn( 'jacobi', PVMDEFAULT, '*', maxntids, tids, numt)
 c	TODO. Machacar todo si hay un numero mayor de procesos que maxntids
-		print *,'Numero de filas',numt
 		filasproc = int(n/numt)
-		
 		resto = n -(filasproc*numt)
-		
 c     inicializamos al resultado
-	  
-		
-		filaini = 1
+		 filaini = 1
+		 print *,'Comenzando envio de info',numt  
 c	  mandamos los dato iniciales a los procesos
 	    do i=1,numt
 	       filafin = filaini+filasproc  
 c		   Mandamos filaini y filafin
+           print *,'Comenzando envio de info',numt 
 	       call pvmfinitsend( PVMDATARAW, info)
            call pvmfpack( INTEGER4, filaini, 1, 1, info)
 		   call pvmfpack( INTEGER4, filafin, 1, 1, info)
@@ -75,16 +59,36 @@ c          Mandamos las filas de a
 				call pvmfpack (REAL8,b(filaini),1,1,info)
 				call pvmfpack (REAL8,diag(filaini),1,1,info)
 		   enddo
-           call pvmfsend( tids(i), msgtype, info)
+           call pvmfsend( tids(i), 2, info)
+		   print *,'Comenzando envio de info',numt 
 	       filaini = filafin + 1;
 	    enddo
 		filasproc = resto
+
+      else
+	  	print *,'iniciando recepcion de datos'
+c 	    Recibimos los datos
+		call pvmfrecv(iptid,2,info)
+		call pvmfunpack(INTEGER4,filaini,1,1,info)
+		call pvmfunpack(INTEGER4,filafin,1,1,info)
+		filasproc = filafin - filaini
+		call pvmfpack(INTEGER4,n,1,1,info)
+		do j=filaini,filafin
+				call pvmfunpack (REAL8,A(filaini,1),n,maxm,info)
+				call pvmfunpack (REAL8,b(filaini),1,1,info)
+				call pvmfunpack (REAL8,diag(filaini),1,1,info)
+		enddo
+		print *,'datos recibidos'
+	   
+c     Si tiene padre hacemos el proceso de los hijos  
+
 	  endif 
 
 c	Inicializamos las x a cero como ponia el enunciado, si se quisiera leer de un fichero, habria que mandarlo por send
 	  do i=filaini,filafin
 		  x(i) = 0
 	  enddo
+	  print *,'x inicializadas'
 	  fin=0
 	  k=1
       do while ( fin .eq. 1)
@@ -94,13 +98,19 @@ c   Comprobacion si hay resto en el proceso principal
 			  k = filaini+i-1
 			  diagk=diag(k)
 			  xsol(i) = call calcularJacobi(n,A,b(k),diagk,x(k),k)
+			  sum = sum + abs((x(i)- xsol(i)))
 			enddo
 		  endif
-c   Llamamos a pvmreduce para calcular la norma y ver la salida, TODO sustituir pvmSum por norma
-		  call pvmfreduce(PvmSum,x,filasproc,REAL8,1,'jacobi',0,info)
-c 	Necesario llamar a pvmfbarrier ya que pvmfreduce no es bloqueate
 
+c   Llamamos a pvmreduce para calcular la norma y ver la salida, TODO sustituir pvmSum por norma
+		  call pvmfreduce(PvmSum,sum,1,REAL8,2,'jacobi',0,info)
+		  print *,'suma',sum
+c 	Necesario llamar a pvmfbarrier ya que pvmfreduce no es bloqueate
+          print *,'Final de todas las llamadas'
 		  call pvmfbarrier('jacobi',ntask+1,info)
+		  if (gnum .eq. 0) then
+		  	 fin = norma(sum)  
+		  endif
 		  
 	  enddo
 	  
