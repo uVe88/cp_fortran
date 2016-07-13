@@ -19,5 +19,5 @@ INCL    =       -I/usr/include
 all: matriz
 
 matriz: matriz.f
-	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(GLIB) $(FLIBS) $(INCL)
+	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
 	mv $@ $(XDIR)

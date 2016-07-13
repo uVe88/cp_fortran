@@ -156,7 +156,7 @@ c       check it
         
         subroutine InitBlock (a, b, c, blk, row, col)
         implicit none
-	 real*8 a(blk*blk), b(blk*blk), c(blk*blk)
+	    real*8 a(blk*blk), b(blk*blk), c(blk*blk)
         integer blk, row, col
         integer len, ind
         integer i,j
