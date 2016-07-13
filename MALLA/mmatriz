@@ -5,7 +5,7 @@ XDIR	=	$(HOME)/pvm3/bin/$(PVM_ARCH)
 # Compilador de fortran, opciones y librerias
 F77     =       gfortran
 FFLAGS  =       -O -w
-FLIBS	=	-lfpvm3 -lpvm3 -lgpvm3
+FLIBS	=	-lfpvm3 -lpvm3
 GLIB    =       -lgpvm3
 
 # Path absoluto donde se encuentran las librerias anteriores
@@ -19,6 +19,5 @@ INCL    =       -I/usr/include
 all: matriz
 
 matriz: matriz.f
-	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(FLIBS) $(INCL)
+	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(GLIB) $(FLIBS) $(INCL)
 	mv $@ $(XDIR)
-
