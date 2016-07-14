@@ -21,4 +21,3 @@ all: mvpi
 mvpi: mvpi.f
 	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
 	mv $@ $(XDIR)
-
