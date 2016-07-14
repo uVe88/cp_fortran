@@ -58,6 +58,7 @@ c Enviamos el numero de tareas para hacer los barriers
 		   call pvmfpack( INTEGER4,numt,1,1,info)
 c  Enviamos el gnum del parent pava el pvmfreduce
            root = gnum  
+		   
 		   call pvmfpack(INTEGER4,root,1,1,info)
 		
 		   print *,'filaini: ',filaini,'filafin: ',filafin
@@ -73,6 +74,7 @@ c		Inicializamos el resultado a cero
 	      do j=1,n
 		       x(j) = 0
 	      enddo
+		  print *,'datos padre',b(1),d(1),d(2)  
 	    enddo
 
 
@@ -85,7 +87,7 @@ c       Recibimos
         call pvmfunpack(INTEGER4, filasproc, 1, 1, info)
 		call pvmfunpack(INTEGER4,n,1,1,info)
 		call pvmfunpack( INTEGER4,numt,1,1,info)
-		call pvmfunpack(INTEGER4,gnump,1,1,info)
+		call pvmfunpack(INTEGER4,root,1,1,info)
 		
 		do j=1,filasproc     
 			call pvmfunpack (REAL8,A(j,1),n,maxm,info)
@@ -99,12 +101,12 @@ c       Recibimos
 		print *,'n: ',n,'.maxm: ',maxm
 
 	  endif 
-
+      call pvmfbarrier('group1',numt+1,info)
 c 	Hacemos un scatter de b y de la diagonal
       print *,filasproc
-	  call pvmfscatter(b,b,filasproc,REAL8,1,'group1',gnump,info)
-	  call pvmfscatter(d,d,filasproc,REAL8,2,'group1',gnump,info)
-	  print *,'datos inicializados',b(1),d(1)  
+	  call pvmfscatter(b,b,filasproc,REAL8,1,'group1',root,info)
+	  call pvmfscatter(d,d,filasproc,REAL8,2,'group1',root,info)
+	  print *,'datos inicializados',b(1),d(1),d(2)  
       
 
 	  fin = 0
@@ -121,8 +123,10 @@ c Hacemos un broadcast de toda la solucion x
 		   call pvmfbcast('group1',1,info)  		
 	  endif
      
-c Calculamos la solucion parcial con los datos	
-      print *,'filaini: ',filaini,'filafin: ',filafin 
+c Calculamos la solucion parcial con los datos
+      	
+      print *,'filaini: ',filaini,'filafin: ',filafin
+	  call escribe(A,maxm,filaini,filafin) 
       do i=filaini,filafin
 	    sumx=0
 		do j=1,n
@@ -130,24 +134,27 @@ c Calculamos la solucion parcial con los datos
 		     sumx = sumx+A(i,j)*x(j)
 		  endif
 		enddo
+		print *,'sumx : ',sumx,'di:',d(i)
 		x(i) = (b(i)-sumx/d(i))
 	  enddo	
-
 c Recogemos las soluciones parciales en un vector
-       call pvmfgather(x,x,filasproc,REAL8,1,'group1',gnump,info)
+       print *,'antes del gather',filasproc,root
+	   
+       call pvmfgather(x,x,filasproc,REAL8,2,'group1',root,info)
 	   print *,'en el grupo soy: ',gnum
        print *,('x(',i,')=',x(i),'; ',i=1,n,filasproc)
 c Realizamos el calculo de Jacobi para las filas que quedan 
-	   if (gnum .eq. gnump) then
-c   Calculo la norma	
+	   if (gnum .eq. root) then
+c   Calculo la norma
+            	
 
 	   endif
 c      Sincronizo procesos	  
 
 
       enddo
-	  call pvmfbarrier('group1',numt+1,info)			
-			
+	  			
+	 	
             
 		  
 		  
