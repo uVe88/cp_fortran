@@ -16,8 +16,11 @@ LFLAGS	=	-L$(PVM_ROOT)/lib/$(PVM_ARCH)
 INCL    =       -I/usr/include
 
 
-all: matriz
+all: norma jacobi
 
-matriz: matriz.f
-	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(GLIB) $(FLIBS) $(INCL)
+norma: norma.f
+    $(F77) -c $(FFLAGS) $(INCL) norma.f
+
+jacobi: jacobi.f norma.o
+	$(F77) $(FFLAGS) -o $@ $@.f norma.o $(LFLAGS) $(FLIBS) $(INCL)
 	mv $@ $(XDIR)

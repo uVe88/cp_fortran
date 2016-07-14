@@ -16,13 +16,11 @@ LFLAGS	=	-L$(PVM_ROOT)/lib/$(PVM_ARCH)
 INCL    =       -I/usr/include
 
 
-all: master slave
+all: norma jacobi
 
-master: master.f expande.o
-	$(F77) $(FFLAGS) -o $@ $@.f expande.o $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
+norma: norma.f
+	$(F77) -c $(FFLAGS) $(INCL) norma.f
+
+jacobi: jacobi.f norma.o
+	$(F77) $(FFLAGS) -o $@ $@.f norma.o $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
 	mv $@ $(XDIR)
-slave: slave.f expande.o
-	$(F77) $(FFLAGS) -o $@ $@.f expande.o $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
-	mv $@ $(XDIR)
-expande.o: expande.f
-	$(F77) -c $(FFLAGS) $(INCL) expande.f
