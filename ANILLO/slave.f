@@ -4,7 +4,7 @@ c Alumno Ivan Gomez
 	implicit none
       include 'fpvm3.h'
       integer maxtids, mpos, ntid, info, i, numt
-      parameter(maxtids=8)
+      parameter(maxtids=100)
 	integer mytid, rtid, tids(maxtids), ntids, var
         
 c Inicio el pvm y obtengo mi tid
@@ -22,8 +22,8 @@ c     - la variable a incrementar - var
       call pvmfunpack(INTEGER4, ntids, 1, 1, info)
       call pvmfunpack(INTEGER4, tids, ntids, 1, info)
       call pvmfunpack(INTEGER4, var, 1, 1, info)
-      print*, "recibo parametros", rtid, ntids, tids, var
-
+      print*,'recibo parametros',rtid,ntids,var,(tids(i), i=1, ntids)
+      
 c Incrementamos el valor de la variable de paso
       var = var + 1
 
