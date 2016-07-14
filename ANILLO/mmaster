@@ -19,10 +19,10 @@ INCL    =       -I/usr/include
 all: master slave
 
 master: master.f expande.o
-	$(F77) $(FFLAGS) -o $@ $@.f expande.o $(LFLAGS) $(FLIBS) $(INCL)
+	$(F77) $(FFLAGS) -o $@ $@.f expande.o $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
 	mv $@ $(XDIR)
 slave: slave.f expande.o
-	$(F77) $(FFLAGS) -o $@ $@.f expande.o $(LFLAGS) $(FLIBS) $(INCL)
+	$(F77) $(FFLAGS) -o $@ $@.f expande.o $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
 	mv $@ $(XDIR)
 expande.o: expande.f
 	$(F77) -c $(FFLAGS) $(INCL) expande.f
