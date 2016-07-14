@@ -74,7 +74,7 @@ c		Inicializamos el resultado a cero
 	      do j=1,n
 		       x(j) = 0
 	      enddo
-		  print *,'datos padre',b(1),d(1),d(2)  
+		  print *,'datos padre',b(1),d(1),d(2),x(1),x(2)  
 	    enddo
 
 
@@ -93,7 +93,7 @@ c       Recibimos
 			call pvmfunpack (REAL8,A(j,1),n,maxm,info)
 		enddo
 
-		call escribe(A,maxm,filafin,n)
+c		call escribe(A,maxm,filafin,n)
 		print *,'datos recibidos'
 	    filaini=1
 		filafin=filasproc
@@ -105,33 +105,36 @@ c       Recibimos
 c 	Hacemos un scatter de b y de la diagonal
       print *,filasproc
 	  call pvmfscatter(b,b,filasproc,REAL8,1,'group1',root,info)
-	  call pvmfscatter(d,d,filasproc,REAL8,2,'group1',root,info)
+	  call pvmfscatter(d,d,filasproc,REAL8,1,'group1',root,info)
 	  print *,'datos inicializados',b(1),d(1),d(2)  
       
 
 	  fin = 0
-c      do while ( fin .eq. 0)
-	   do z=1,3
+      do while ( fin .eq. 0)
+
 c Hacemos un broadcast de toda la solucion x
        print *,'Entra en bucle'
       if (gnum .eq. gnump) then
            call pvmfrecv(iptid,1,info)
 		   call pvmfunpack(REAL8,x,n,maxm,info)
+		   print *,'x:',x(1),x(2),x(3),x(4)	
 	  else
 	 	   call pvmfinitsend(PVMDATARAW,info)
 		   call pvmfpack(REAL8,x,n,maxm,info)
-		   call pvmfbcast('group1',1,info)  		
+		   call pvmfbcast('group1',1,info)  
+		   print *,'x:',x(1),x(2),x(3),x(4)		
 	  endif
      
 c Calculamos la solucion parcial con los datos
       	
       print *,'filaini: ',filaini,'filafin: ',filafin
-	  call escribe(A,maxm,filaini,filafin) 
+c	  call escribe(A,maxm,filaini,filafin) 
       do i=filaini,filafin
 	    sumx=0
 		do j=1,n
 		  if (j .ne. i) then
 		     sumx = sumx+A(i,j)*x(j)
+			 print *,'datos: ',A(i,j),x(j)
 		  endif
 		enddo
 		print *,'sumx : ',sumx,'di:',d(i)
@@ -146,20 +149,17 @@ c Recogemos las soluciones parciales en un vector
 c Realizamos el calculo de Jacobi para las filas que quedan 
 	   if (gnum .eq. root) then
 c   Calculo la norma
-            	
-
+         fin = norma(xsol,x,maxm,n)
+         print *,'Calculando norma'
+		 print *,'resultado',x
+c Matamos todos los procesos hijos
+         call shutdown(numt, tids)
 	   endif
 c      Sincronizo procesos	  
 
 
       enddo
 	  			
-	 	
-            
-		  
-		  
-c 	Necesario llamar a pvmfbarrier ya que pvmfreduce no es bloqueante
-      print *,'Final de todas las llamadas de: ',gnum, gnump
 
 		  
 	 
