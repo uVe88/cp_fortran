@@ -4,16 +4,16 @@ c ---------------------------------------------------------
 c Ejemplo de programa fortran para ilustrar el uso de PVM 3
 c ---------------------------------------------------------
       
-      parameter( maxm=100, maxntids=8)
+      parameter( maxm=100, maxntids=2)
       integer i, info, nproc, nhost, msgtype
-      integer mytid, iptid,numt,filasproc,resto,numfilas,gnum
+      integer mytid, iptid,numt,filasproc,resto,numfilas,gnum,gnump
 	  real*8 A(maxm,maxm)
 	  real*8 b(maxm)
 	  real*8 diag(maxm)
-	  integer m,n, filaini, filafin, k
+	  integer m,n, filaini, filafin, k,z
 	  integer tids(maxntids)
 	  real*8 bk,diagk
-	  real*8 sum
+	  real*8 sum,sumx
 	  real*8 xsol(maxm),x(maxm)
 
 	  
@@ -22,9 +22,9 @@ c     ----------------------------------------
 	  call pvmfmytid( mytid )
 c     preguntamos por el proceso padre
 	  call pvmfparent( iptid )
-	  call pvmfjoingroup('test',gnum)
+	  call pvmfjoingroup('group1',gnum)
 	  print *, 'Mi tid es ', mytid,' y mi numero en el grupo es ',gnum, 'mi padre es', iptid
-	  CALL pvmfcatchout( 1, info )
+c	  CALL pvmfcatchout( 1, info )
 c 	  Inicializamos resto para los procesos hijos
 	  resto = 0
       print *,'Tengo padre:', iptid, pvmnoparent
@@ -35,33 +35,53 @@ c	  Si no tiene padre hacemos el proceso principal
 c	  Leemos los inputs
 	    print *,'Numero de filas'
         read *, n		
- 	    call construirDatos(n,A,b,diag)
-		call pvmfspawn( 'jacobi', PVMDEFAULT, '*', maxntids, tids, numt)
+ 	    call construirDatos(n,A,b,diag,maxm)
+c  TODO. Hacer 	que si n < mxntids -> maxntids = n	 
 c	TODO. Machacar todo si hay un numero mayor de procesos que maxntids
-		filasproc = int(n/numt)
+        call pvmfspawn('jacobi',PVMTASKDEFAULT,'*',maxntids,tids,numt)
+        
+		filasproc = n/numt
 		resto = n -(filasproc*numt)
+		print *,'filasproc: ',filasproc
 c     inicializamos al resultado
 		 filaini = 1
 		 print *,'Comenzando envio de info',numt  
 c	  mandamos los dato iniciales a los procesos
 	    do i=1,numt
-	       filafin = filaini+filasproc  
+	       filafin = filaini+filasproc -1 
 c		   Mandamos filaini y filafin
+		   call escribe(A,maxm,n,n)	
            print *,'Comenzando envio de info',numt 
 	       call pvmfinitsend( PVMDATARAW, info)
            call pvmfpack( INTEGER4, filaini, 1, 1, info)
 		   call pvmfpack( INTEGER4, filafin, 1, 1, info)
-c          El numero total de datos es necesario para recorrer las matrices
-		   call pvmfpack(INTEGER4,n,1,1,info)
+		   call pvmfpack( INTEGER4,n,1,1,info)
+c Enviamos el numero de tareas para hacer los barriers
+		   call pvmfpack( INTEGER4,numt,1,1,info)
+c  Enviamos el gnum del parent pava el pvmfreduce
+		   call pvmfpack(INTEGER4,gnum,1,1,info)
+		   gnump = gnum
+		   print *,'filaini: ',filaini,'filafin: ',filafin
 c          Mandamos las filas de a
            do j=filaini,filafin
-				call pvmfpack (REAL8,A(filaini,1),n,maxm,info)
-				call pvmfpack (REAL8,b(filaini),1,1,info)
-				call pvmfpack (REAL8,diag(filaini),1,1,info)
+				call pvmfpack (REAL8,A(j,1),n,maxm,info)
+c			
+c				
 		   enddo
+c	Enviamos el vector b
+		   do j=filaini,filafin
+                call pvmfpack (REAL8,b(j),1,1,info)
+		   enddo
+c   Enviamos el vector con las diagonales
+		  do j=filaini,filafin
+			  call pvmfpack (REAL8,diag(j),1,1,info)
+		  enddo
+
            call pvmfsend( tids(i), 2, info)
-		   print *,'Comenzando envio de info',numt 
+		   print *,'Comenzando envio de info',numt
+c		Esto lo hacemos para empezar a trabajar con el resto 
 	       filaini = filafin + 1;
+		   filafin = filaini + filasproc -1
 	    enddo
 		filasproc = resto
 
@@ -71,13 +91,24 @@ c 	    Recibimos los datos
 		call pvmfrecv(iptid,2,info)
 		call pvmfunpack(INTEGER4,filaini,1,1,info)
 		call pvmfunpack(INTEGER4,filafin,1,1,info)
-		filasproc = filafin - filaini
-		call pvmfpack(INTEGER4,n,1,1,info)
-		do j=filaini,filafin
-				call pvmfunpack (REAL8,A(filaini,1),n,maxm,info)
-				call pvmfunpack (REAL8,b(filaini),1,1,info)
-				call pvmfunpack (REAL8,diag(filaini),1,1,info)
+		call pvmfunpack(INTEGER4,n,1,1,info)
+		call pvmfunpack( INTEGER4,numt,1,1,info)
+		call pvmfunpack(INTEGER4,gnump,1,1,info)
+		filasproc = filafin - filaini+1
+		print *,'filaini: ',filaini,'filafin: ',filafin
+		print *,'n: ',n,'.maxm: ',maxm
+		do j=filaini,filafin     
+			call pvmfunpack (REAL8,A(j,1),n,maxm,info)
 		enddo
+c	Recibimos el vector b
+		do j=filaini,filafin
+            call pvmfunpack (REAL8,b(j),1,1,info)
+		enddo
+c   Recibimos el vector con las diagonales
+		  do j=filaini,filafin
+			  call pvmfunpack (REAL8,diag(j),1,1,info)
+		  enddo
+		call escribe(A,maxm,filafin,n)
 		print *,'datos recibidos'
 	   
 c     Si tiene padre hacemos el proceso de los hijos  
@@ -91,59 +122,59 @@ c	Inicializamos las x a cero como ponia el enunciado, si se quisiera leer de un 
 	  print *,'x inicializadas'
 	  fin=0
 	  k=1
-      do while ( fin .eq. 1)
+	  print *,'fin: ',fin
+c      do while ( fin .eq. 0)
+      do z=1,4
 c   Comprobacion si hay resto en el proceso principal
+      print *,'Entrando en bucle'
+	  print *,'filasproc:',filasproc
 		  if (filasproc .gt. 0) then
-			do i=1,filasproc
-			  k = filaini+i-1
-			  diagk=diag(k)
-			  xsol(i) = call calcularJacobi(n,A,b(k),diagk,x(k),k)
+c si hay mas de una fila hacemos el calculo de jacobi para las filas
+			do i=0,filasproc-1
+			  k = filaini+i
+              sumx = 0
+	  			do j=1,n
+          			sumx = sumx  + (A(k,j)*x(k))
+	  			enddo
+	 print *,'k: ',k,'bk: ',b(k),'sum x: ',sumx, 'diagk: ',diag(k)	  
+			  xsol(i) = (b(k)-sumx)/diag(k)
+			  print *,'x ',filaini,'= ',xsol(i)
 			  sum = sum + abs((x(i)- xsol(i)))
 			enddo
 		  endif
-
+          print *,'sum:', sum,gnump
+          print *,'ntask: ',numt
 c   Llamamos a pvmreduce para calcular la norma y ver la salida, TODO sustituir pvmSum por norma
-		  call pvmfreduce(PvmSum,sum,1,REAL8,2,'jacobi',0,info)
-		  print *,'suma',sum
-c 	Necesario llamar a pvmfbarrier ya que pvmfreduce no es bloqueate
-          print *,'Final de todas las llamadas'
-		  call pvmfbarrier('jacobi',ntask+1,info)
-		  if (gnum .eq. 0) then
+		  call pvmfreduce(PvmSum,sum,1,REAL8,2,'group1',gnump,info)
+		 print *,'barrera'
+c		  call pvmfbarrier('group1',numt+1,info)
+c 	Necesario llamar a pvmfbarrier ya que pvmfreduce no es bloqueante
+          print *,'Final de todas las llamadas de: ',gnum, gnump
+		
+		 
+		  if (gnum .eq. gnump) then
+		     print *,'suma',sum
 		  	 fin = norma(sum)  
 		  endif
 		  
 	  enddo
 	  
-	  call pvmflvgroup('jacobi',info)
+	  call pvmflvgroup('group1',info)
 	  call pvmfexit(info)
 	  
       end
 
 
 	  
-c     subrutina para calcular jacobi a partir de un determinado numero de valores
-	  real*8 function  calcularJacobi(n,A,bk,diag,x,k)
-	  implicit none
-	  integer n    
-	  real*8 A(n,n)
-	  real*8 bk,diag,sum,x
-	  integer i,k
-	  sum = 0
-	  do i=1,n
-          sum = sum + (A(k,i)*x)
-	  enddo
-	  calcularJacobi = (bk-sum)/diag
-	  return
-	  end
-	  
+
 	
 c     */Construimos la funcion principal en función de los parametros dados	 /* 
-	  subroutine construirDatos (n,A,b,diag)
+	  subroutine construirDatos (n,A,b,diag,maxm)
 	  implicit none
-	  real*8 A(n,n)
-	  real*8 b(n)
-	  real*8 diag(n)
-	  integer n,i,j
+	  real*8 A(maxm,maxm)
+	  real*8 b(maxm)
+	  real*8 diag(maxm)
+	  integer n,i,j,maxm
 	  
 	  do j=1,n
         do i=1,n
@@ -160,5 +191,7 @@ c     */Construimos la funcion principal en función de los parametros dados	 /*
 	  enddo
       return
       end	  
+      
+	
 
 	  
