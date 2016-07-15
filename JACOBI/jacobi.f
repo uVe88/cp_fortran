@@ -9,7 +9,7 @@ c ---------------------------------------------------------
       integer mytid, iptid,numt,filasproc,resto,numfilas,gnum,root
 	  real*8 A(maxm,maxm)
 	  real*8 b(maxm)
-	  real*8 d(maxm)
+	  real*8 btemp(maxm)
 	  integer m,n, filaini, filafin, k,z,fin
 	  integer tids(maxntids)
 	  real*8 sum,sumx
@@ -21,7 +21,7 @@ c     ----------------------------------------
 	  call pvmfmytid( mytid )
 c     preguntamos por el proceso padre
 	  call pvmfparent( iptid )
-	  call pvmfjoingroup('group1',gnum)
+	  call pvmfjoingroup('test',gnum)
 	  print *, 'Mi tid es ', mytid,' y mi numero en el grupo es ',gnum, 'mi padre es', iptid
 	  CALL pvmfcatchout( 1, info )
 c 	  Inicializamos resto para los procesos hijos
@@ -41,16 +41,15 @@ c	TODO. Machacar todo si hay un numero mayor de procesos que maxntids
         
 		filasproc = n/numt
 		resto = n -(filasproc*numt)
-		print *,'filasproc: ',filasproc
 c     inicializamos al resultado
 		 filaini = 1
-		 print *,'Comenzando envio de info',numt  
 c	  mandamos los dato iniciales a los procesos
+        call escribe(A,maxm,n,n)	
 	    do i=1,numt
 	       filafin = filaini+filasproc -1 
 c		   Mandamos filaini y filafin
-		   call escribe(A,maxm,n,n)	
-           print *,'Comenzando envio de info',numt 
+		  
+
 	       call pvmfinitsend( PVMDATARAW, info)
            call pvmfpack( INTEGER4, filasproc, 1, 1, info)
 		   call pvmfpack( INTEGER4,n,1,1,info)
@@ -61,22 +60,30 @@ c  Enviamos el gnum del parent pava el pvmfreduce
 		   
 		   call pvmfpack(INTEGER4,root,1,1,info)
 		
-		   print *,'filaini: ',filaini,'filafin: ',filafin
+		
 c          Mandamos las filas de a
            do j=filaini,filafin
 				call pvmfpack (REAL8,A(j,1),n,maxm,info)				
 		   enddo
+		  
+		   
+		   k=1
+		   do j=filaini,filafin
+		      btemp(k) = b(j)
+              k=k+1	
+		   enddo
+		   call pvmfpack(REAL8,btemp,filasproc,1,info)
 		   filaini=filafin+1
 		   filafin=filafin+resto-1
            call pvmfsend( tids(i), 2, info)
-		   print *,'Comenzando envio de info',numt
+		 
 c		Inicializamos el resultado a cero
 	      do j=1,n
 		       x(j) = 0
 	      enddo
-		  print *,'datos padre',b(1),d(1),d(2),x(1),x(2)  
+	     
 	    enddo
-
+        filafin=filafin+resto
 
       else
 c     Si tiene padre hacemos el proceso de los hijos  
@@ -92,37 +99,38 @@ c       Recibimos
 		do j=1,filasproc     
 			call pvmfunpack (REAL8,A(j,1),n,maxm,info)
 		enddo
+		
+        call pvmfunpack (REAL8,b,filasproc,1,info)
 
 c		call escribe(A,maxm,filafin,n)
 		print *,'datos recibidos'
 	    filaini=1
 		filafin=filasproc
-        print *,'filaini: ',filaini,'filafin: ',filafin
-		print *,'n: ',n,'.maxm: ',maxm
+       
 
 	  endif 
-      call pvmfbarrier('group1',numt+1,info)
+
+      call pvmfbarrier('test',numt+1,info)
 c 	Hacemos un scatter de b y de la diagonal
-      print *,filasproc
-	  call pvmfscatter(b,b,filasproc,REAL8,1,'group1',root,info)
-	  call pvmfscatter(d,d,filasproc,REAL8,1,'group1',root,info)
-	  print *,'datos inicializados',b(1),d(1),d(2)  
+
+
       
 
-	  fin = 0
-      do while ( fin .eq. 0)
-
+	   fin = 0
+c       do while ( fin .eq. 0)
+       do z=1,3
 c Hacemos un broadcast de toda la solucion x
-       print *,'Entra en bucle'
-      if (gnum .eq. gnump) then
-           call pvmfrecv(iptid,1,info)
-		   call pvmfunpack(REAL8,x,n,maxm,info)
-		   print *,'x:',x(1),x(2),x(3),x(4)	
+      print *,'Entra en bucle'
+	  print *,gnum,root
+      if (gnum .eq. root) then
+	       call pvmfinitsend(PVMDATARAW,info)
+		   call pvmfpack(REAL8,x,n,1,info)
+		   call pvmfbcast('test',1,info) 
+           print *,'xhijo:',x(1),x(2),x(3),x(4)		
 	  else
-	 	   call pvmfinitsend(PVMDATARAW,info)
-		   call pvmfpack(REAL8,x,n,maxm,info)
-		   call pvmfbcast('group1',1,info)  
-		   print *,'x:',x(1),x(2),x(3),x(4)		
+	 	   call pvmfrecv(iptid,1,info)
+		   call pvmfunpack(REAL8,x,n,1,info)
+		   print *,'xpadre:',x(1),x(2),x(3),x(4)			  
 	  endif
      
 c Calculamos la solucion parcial con los datos
@@ -134,42 +142,49 @@ c	  call escribe(A,maxm,filaini,filafin)
 		do j=1,n
 		  if (j .ne. i) then
 		     sumx = sumx+A(i,j)*x(j)
-			 print *,'datos: ',A(i,j),x(j)
 		  endif
 		enddo
-		print *,'sumx : ',sumx,'di:',d(i)
-		x(i) = (b(i)-sumx/d(i))
+		print *,'parcial',b(i),sumx,A(i,i)
+		x(i) = (b(i)-sumx/A(i,i))
 	  enddo	
 c Recogemos las soluciones parciales en un vector
-       print *,'antes del gather',filasproc,root
+
 	   
-       call pvmfgather(x,x,filasproc,REAL8,2,'group1',root,info)
-	   print *,'en el grupo soy: ',gnum
-       print *,('x(',i,')=',x(i),'; ',i=1,n,filasproc)
+       call pvmfgather(x,x,filasproc,REAL8,2,'test',root,info)
+
 c Realizamos el calculo de Jacobi para las filas que quedan 
 	   if (gnum .eq. root) then
 c   Calculo la norma
          fin = norma(xsol,x,maxm,n)
          print *,'Calculando norma'
-		 print *,'resultado',x
-c Matamos todos los procesos hijos
-         call shutdown(numt, tids)
+		 print *,'resultado',x(1),x(2),x(3),x(4)
+
+	
+
+        
 	   endif
-c      Sincronizo procesos	  
+  
 
 
       enddo
 	  			
 
-		  
-	 
-	  
-	  call pvmflvgroup('group1',info)
+c Matamos todos los procesos hijos		  
+	  call shutdown(numt, tids)
+	  print *,'Salgo'
+	  call pvmflvgroup('test',info)
 	  call pvmfexit(info)
 	  
       end
 
+      subroutine shutdown (numt,tids)
+      integer numt,i, tids(numt)
 
+	  do i=1,numt
+         call pvmfkill(tids(i),info) 
+	  enddo
+      return   
+	  end 
 	  
 	
 c     */Construimos la funcion principal en función de los parametros dados	 /* 
