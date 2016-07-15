@@ -116,33 +116,21 @@ c     Busco mis bloques
       col = mod(mygid,nfilas)+1
       
 
-c     Calculo mis vecinos de arriba y abajo 
-	    if (row.gt.1) then
-        call pvmfgettid('mmult', mygid-nfilas, uptid)
-      else
-       	call pvmfgettid('mmult', mygid+(nfilas*(nfilas-1)), uptid)
-        
-      endif
-      
-      if (row.lt.nfilas) then
-        call pvmfgettid('mmult', mygid+nfilas, downtid)
-      else
-       	call pvmfgettid('mmult', mygid-(nfilas*(nfilas-1)), downtid)   
+c     Calculo mis n vecinos de arriba y abajo
+      prow = row
+      if(col.gt.1)
+        do i=1, row-1
+	          call dameup(prow, mygid, nfilas, prow, pgid ,uptid)
+        enddo
       endif
 
+c     Calculo mis vecinos de arriba y abajo
+      call dameup(row, mygid, nfilas, prow, pgid ,uptid)
+      call damedown(row, mygid, nfilas, prow, pgid ,downtid)
+
 c     Calculo mis vecinos de izq y dcha
-c     Calculo mi vecinos de izq
-	    if (col.gt.1) then
-        call pvmfgettid('mmult', mygid-1, izqtid)
-      else
-       	call pvmfgettid('mmult', mygid+nfilas-1, izqtid) 
-      endif
-c     Calculo mi vecino dcha
-	    if (col.eq.nfilas) then
-	   	  call pvmfgettid('mmult', mygid-nfilas+1, dchatid)
-	    else
-	   	  call pvmfgettid('mmult', mygid+1, dchatid)
-      endif
+      call dameizq(col, mygid, nfilas, prow, pgid ,izqtid)
+      call damedch(col, mygid, nfilas, prow, pgid ,dchatid)
 
 c      print*,'P:',mygid,'F:',row,'C:',col,'tid',mytid
 c      print*,'UP:',uptid,'DOWN:',downtid,'IZQ:',izqtid,'DCHA:',dchatid
@@ -255,4 +243,61 @@ c     Esperamos los bloques de A y B
           enddo
         enddo
       enddo
+      end
+
+      subroutine dameizq(col, gid, n, pcol, pgid, tid)
+      integer col, gid, n, pcol, pgid, tid
+
+      if (col.gt.1) then
+        pgid=gid-1
+        pcol=col-1
+        call pvmfgettid('mmult', pgid, r)
+      else
+        pgid=gid+n-1
+        pcol=1
+       	call pvmfgettid('mmult', pgid, r) 
+      endif
+      end
+
+      subroutine damedch(col, gid, n, pcol, pgid, tid)
+      integer col, gid, n, pcol, pgid, tid
+
+      if (col.lt.nfilas) then
+        pgid = gid+1
+        pcol = col + 1
+	   	  call pvmfgettid('mmult', pgid, tid)
+	    else
+        pgid = gid-n+1
+        pcol = 1
+	   	  call pvmfgettid('mmult', pgid, tid)
+      endif
+      end
+
+      subroutine dameup(row, gid, n, prow, pgid, tid)
+      integer row, gid, n, prow, pgid, tid
+
+      if (row.gt.1) then
+        pgid = gid-n
+        prow = row - 1
+        call pvmfgettid('mmult', pgid, tid)
+   	  else
+        prow = n
+        pgid = gid+(n*(n-1))
+        call pvmfgettid('mmult', pgid, tid)
+      endif
+      end
+
+      subroutine damedown(row, gid, n, prow, pgid, tid)
+      integer row, gid, n, prow, pgid, tid
+
+      if (row.lt.nfilas) then
+        pgid=gid+n
+        prow = row + 1 
+        call pvmfgettid('mmult', pgid, tid)
+      else
+        prow = 1
+        pgid = gid-(n*(n-1))
+       	call pvmfgettid('mmult', gid-(n*(n-1)), tid)
+      endif
+      return
       end
