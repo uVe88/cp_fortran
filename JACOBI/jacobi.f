@@ -4,7 +4,7 @@ c ---------------------------------------------------------
 c Ejemplo de programa fortran para ilustrar el uso de PVM 3
 c ---------------------------------------------------------
       
-      parameter( maxm=100, maxntids=2)
+      parameter( maxm=1000, maxntids=8)
       integer i, info, nproc, nhost, msgtype
       integer mytid, iptid,numt,filasproc,resto,numfilas,gnum,root
 	  real*8 A(maxm,maxm)
@@ -22,11 +22,10 @@ c     ----------------------------------------
 c     preguntamos por el proceso padre
 	  call pvmfparent( iptid )
 	  call pvmfjoingroup('test',gnum)
-	  print *, 'Mi tid es ', mytid,' y mi numero en el grupo es ',gnum, 'mi padre es', iptid
 	  CALL pvmfcatchout( 1, info )
 c 	  Inicializamos resto para los procesos hijos
 	  resto = 0
-      print *,'Tengo padre:', iptid, pvmnoparent
+     
 
 
       if (iptid.eq.pvmnoparent) then
@@ -95,7 +94,7 @@ c 	    Recibimos los datos
 		call pvmfrecv(iptid,2,info)
 
         call pvmfunpack(INTEGER4,filapadre,1,1,info)  
-		print *,'filapadre',filapadre   
+		 
         call pvmfunpack(INTEGER4, filasproc, 1, 1, info)
 		call pvmfunpack(INTEGER4,n,1,1,info)
 		call pvmfunpack( INTEGER4,numt,1,1,info)
@@ -121,8 +120,10 @@ c 	Hacemos un scatter de b y de la diagonal
 
       
 
-	   fin = 0
+	  fin = 0
+	  z=0
       do while ( fin .eq. 0)
+	
 c Hacemos un broadcast de toda la solucion x
       print *,'Entra en bucle'
 	  print *,gnum,root
@@ -130,18 +131,16 @@ c Hacemos un broadcast de toda la solucion x
 	       call pvmfinitsend(PVMDATARAW,info)
 		   call pvmfpack(REAL8,x,n,1,info)
 		   call pvmfbcast('test',1,info) 
-           print *,'xpadre:',x(1),x(2),x(3),x(4)		
+       	
 	  else
 	 	   call pvmfrecv(iptid,1,info)
 		   call pvmfunpack(REAL8,x,n,1,info)
-		   print *,'xhijo:',x(1),x(2),x(3),x(4)			  
+	  
 	  endif
      
 c Calculamos la solucion parcial con los datos
       	
-      print *,'filaini: ',filaini,'filafin: ',filafin
-	  print *,'filapadre: ',filapadre
-	  print *,filasproc
+ 
 c	  call escribe(A,maxm,filaini,filafin) 
       do i=filaini,filafin
 	    sumx=0
@@ -149,25 +148,34 @@ c	  call escribe(A,maxm,filaini,filafin)
 		do j=1,n
 		  if (j .ne. filaact) then
 		     sumx = sumx+(A(i,j)*x(j))
-			 print *,'parcial j',j,sumx,A(i,j),x(j)
+		
 		  endif
 		enddo
-		print *,'parcial i',i,b(i),sumx,A(i,i)
-		x(i) = (b(i)-sumx/A(i,filaact))
-		print *,'x parcial',filapadre,x(i)
+	
+		x(i) = (b(i)-sumx)/A(i,filaact)
+		
 	  enddo	
 c Recogemos las soluciones parciales en un vector
-
-	   
+      
+	
        call pvmfgather(x,x,filasproc,REAL8,2,'test',root,info)
-
+       call pvmfbarrier('test',numt+1,info)
 c Realizamos el calculo de Jacobi para las filas que quedan 
 	   if (gnum .eq. root) then
-c   Calculo la norma
-         fin = norma(xsol,x,maxm,n)
-         print *,'Calculando norma'
-		 print *,'resultado',x(1),x(2),x(3),x(4)
 
+         if (z .eq. 0)
+             z=1
+
+		 else
+c   Calculo la norma
+		 
+            fin = norma(xsol,x,maxm,n)
+       
+		    print *,'resultado',x(1),x(2),x(3),x(4)
+		 endif
+         do k=1,n
+		   xsol(k)=x(k) 
+         enddo 
 	
 
         
