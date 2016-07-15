@@ -43,7 +43,7 @@ c	TODO. Machacar todo si hay un numero mayor de procesos que maxntids
 c     inicializamos al resultado
 		 filaini = 1
 c	  mandamos los dato iniciales a los procesos
-        call escribe(A,maxm,n,n)	
+    
 	    do i=1,numt
 	       filafin = filaini+filasproc -1 
 c		   Mandamos filaini y filafin
@@ -106,7 +106,6 @@ c 	    Recibimos los datos
 		
         call pvmfunpack (REAL8,b,filasproc,1,info)
 
-c		call escribe(A,maxm,filafin,n)
 		print *,'datos recibidos'
 	    filaini=1
 		filafin=filasproc
@@ -140,8 +139,7 @@ c Hacemos un broadcast de toda la solucion x
      
 c Calculamos la solucion parcial con los datos
       	
- 
-c	  call escribe(A,maxm,filaini,filafin) 
+
       do i=filaini,filafin
 	    sumx=0
 		filaact = filaini+filapadre-1
