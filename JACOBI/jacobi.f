@@ -1,8 +1,7 @@
-  	  program jacobi 
+c Programa jacobi - practica 4 programación paralela
+c Alumno Ivan Gomez
+	  program jacobi 
       include 'fpvm3.h'
-c ---------------------------------------------------------
-c Ejemplo de programa fortran para ilustrar el uso de PVM 3
-c ---------------------------------------------------------
       
       parameter( maxm=1000, maxntids=8)
       integer i, info, nproc, nhost, msgtype

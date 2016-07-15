@@ -1,3 +1,5 @@
+c Programa mvpi - practica 2 programación paralela
+c Alumno Ivan Gomez
       program mvpi
       implicit none
       include 'fpvm3.h'

@@ -1,3 +1,5 @@
+c Programa matriz - practica 3 programación paralela
+c Alumno Ivan Gomez
       program matriz
       implicit none
       include 'fpvm3.h'
@@ -15,7 +17,7 @@
       real*8 a(MAXBLOQTAM*MAXBLOQTAM), b(MAXBLOQTAM*MAXBLOQTAM)
       real*8 c(MAXBLOQTAM*MAXBLOQTAM), cprima(MAXBLOQTAM*MAXBLOQTAM)
 	 
-c     Obtengo el id de mi tarea
+c     Obtengo el id de mi tarea e inicializo en pvm
       call pvmfmytid(mytid)
       call pvmfcatchout(1,info)
 

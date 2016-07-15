@@ -1,4 +1,5 @@
-
+c Subrutine norma - practica 4 programación paralela
+c Alumno Ivan Gomez
        integer function norma (xsol,x,mmax,n)
        real*8 xsol(mmax), x(mmax),suma
        integer mmax,n,i 
