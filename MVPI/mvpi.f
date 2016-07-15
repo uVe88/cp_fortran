@@ -3,22 +3,22 @@
       include 'fpvm3.h'
       integer maxm, maxn, maxntids, info, ibuf, nproc, mtask
       parameter(maxm=100, maxn=100, maxntids=8)
-      real*8 x(maxn),A(maxm,maxn)
+      real*8 x(maxn),A(maxm,maxn), R(maxm, maxn)
       integer mytid, ptid, ctid
       real*8 res(maxm*maxn)
       integer tids(1:maxntids)
-      integer resto, ucom, i , j, c
-      integer m, n, pindex, iup, idown
+      integer resto, ucom, i , j, c, f
+      integer m, n, pindex, iup, idown, pPadre, pHijo
 c     Inicializo pvm y obtengo mi tid y el tid de mi padre
       
       call pvmfmytid(mytid)
       call pvmfparent(ptid)
       call pvmfcatchout(1,info)
-
-      m = 2
-      n = 3
-      mtask = 1
-
+    
+      m = 7
+      n = 7
+      mtask = 2
+      
 c     Compruebo si soy el padre
       if(ptid.eq.pvmnoparent) then
 c       Soy el padre
@@ -36,11 +36,11 @@ c     Calculo las unidades de computacion por proceso y el restante de filas par
            enddo
         enddo
 
-        print*, 'Número de procesos: ', nproc
-        print*, 'Unidades de computación: ', ucom
-        print*, 'Resto para el padre: ', resto
-        print*, 'Valores de la matriz'
-        call escribe(A, m, n, maxm ,maxn)
+c        print*, 'Número de procesos: ', nproc
+c        print*, 'Unidades de computación: ', ucom
+c        print*, 'Resto para el padre: ', resto
+c        print*, 'Valores de la matriz'
+c        call escribe(A, m, n, maxm ,maxn)
 
         if (ucom.gt.0) then
 c       Envio los datos a computar.
@@ -63,31 +63,53 @@ c       Envio los datos a computar.
                 iup = iup + ucom
             enddo
         endif
-        print*, 'Padre-Valores Enviados'
+c        print*, 'Padre-Valores Enviados'
 
-c     Recibo los datos de los procesos hijo y reconstruyo los resultados
+        
+
+c       Recibo los datos de los procesos hijo y reconstruyo los resultados
         do i=1, nproc
-            print*, 'Padre-Espero valores'
+c            print*, 'Padre-Espero valores'
             call pvmfrecv(-1, 3, info)
             call pvmfunpack(INTEGER4, idown, 1, 1, info)
             call pvmfunpack(INTEGER4, iup, 1, 1, info)
             call pvmfunpack(INTEGER4, ucom, 1, 1, info)
             call pvmfunpack(INTEGER4, ctid, 1, 1, info)
-            do j=idown, ucom
-                call pvmfunpack(REAL8,res(j),maxm*maxn, 1, info)
+            call pvmfunpack(REAL8,res,maxm*maxn, 1, info)
+            
+c            print*, 'Padre-Valores recibidos de:',ctid,ucom,iup,idown
+c            print*, res
+c            print*, 'iup, idown',iup,idown
+            
+            do f=idown, iup
+              do c=1, n
+                R(f,c) = res(c+(f-1)*n)
+                print*,f, c, R(f,c),'<-', (c+(f-1)*n)
+              enddo
             enddo
-            print*, 'Padre-Valores recibidos de:', ctid
         enddo
-
+        
         if (resto.gt.0) then
-          idown = ucom * nproc
+          idown = ucom * nproc + 1
           iup = m
-          call matrizvector(A,x,res,iup,idown,m,n,info,maxm,maxn)
+          print*, 'iup, idown, ucom',iup,idown,ucom
+          call matrizvector(A,x,res,iup,idown,ucom,m,n,info,maxm,maxn)
+
+          do f=idown, iup
+              do c=1, n
+                R(f,c) = res(c+(f-1)*n)
+                print*,f, c, R(f,c),'<-', (c+(f-1)*n)
+              enddo
+            enddo
         endif
 
-        print*, ('y(',i,')=',res(i),'; ',i=1,m*n)
-
+        print*, 'Valores recibidos'
+        call escribe(R, m, n, maxm ,maxn)
+        call pvmfexit(info)
       else
+c     ------------------------------------------------------------------------------------------------------------
+c     ############################################################################################################
+c     ------------------------------------------------------------------------------------------------------------  
 c     Soy hijo
 c     Recibo los datos
         call pvmfrecv(ptid, 2, info)
@@ -95,21 +117,24 @@ c     Recibo los datos
         call pvmfunpack(INTEGER4, iup, 1, 1, info)
         call pvmfunpack(INTEGER4, ucom, 1, 1, info)
         call pvmfunpack(REAL8,x,n,1, info)
-        print*, 'Hijo - valor de m y n: ', m, n
         do i=1, m
             call pvmfunpack(REAL8, A(i,1), n, maxn, info)
 c            print*, 'Hijo - valor matrix i: ',i
 c            print*, ('a(',i,',',j,')=',a(i, j),'; ',j=1,n)
         enddo
 
-        print*, 'Hijo - idown: ', idown
-        print*, 'Hijo - iup: ', iup
-        print*, 'Hijo - ucom: ', ucom
+c        print*, 'Hijo - iup: ', iup
+c        print*, 'Hijo - idown: ', idown
+c        print*, 'Hijo - ucom: ', ucom
 c        print*, A
-        print*, 'Hijo - Valores de la matriz'
-        call escribe(A, m, n, maxm ,maxn)
-        
-        call matrizvector(a,x,res,iup,idown,m,n,info,maxm,maxn)
+c        print*, 'Hijo - Valores de la matriz:'
+c        call escribe(A, m, n, maxm ,maxn)
+c        print*, 'Hijo - valores del array:',(x(i), i=1, n)
+
+        call matrizvector(a,x,res,iup,idown, ucom,m,n,info,maxm,maxn)
+c        print*, 'Hijo - Valores del vector resultante',
+c    *(res(i), i=idown, idown+ucom)
+        print*, res
 
 c     Envio datos al padre ya computados
         call pvmfinitsend(PVMDATAINPLACE, ibuf)
@@ -117,19 +142,19 @@ c     Envio datos al padre ya computados
         call pvmfpack(INTEGER4, iup, 1, 1, info)
         call pvmfpack(INTEGER4, ucom, 1, 1, info)
         call pvmfpack(INTEGER4, mytid, 1, 1, info)
-        do i=idown, ucom
-            call pvmfpack(REAL8,res(i),maxm*maxn, 1, info)
-        enddo
+        call pvmfpack(REAL8,res,maxm*maxn, 1, info)
 
         call pvmfsend(ptid, 3, info)
       endif
       
       call pvmfexit(info)
-      end   
-            
-      subroutine matrizvector(A,x,res,iup,idown,m,n,info,maxm,maxn)
+      end
+c     ------------------------------------------------------------------------------------------------------------
+c     ############################################################################################################
+c     ------------------------------------------------------------------------------------------------------------    
+      subroutine matrizvector(A,x,res,iup,idown,ucom,m,n,info,maxm,maxn)
       implicit none
-      integer m, n, info, maxm, maxn
+      integer m, n, info, maxm, maxn, ucom
       real*8 A(maxm, maxn), x(maxn)
       integer iup, idown
       integer r, i, j
@@ -142,9 +167,10 @@ c     Envio datos al padre ya computados
       else
         
         print*, 'proceso:', idown, 'indice:', idown
-        do i=idown, iup-idown
+        do i=idown, idown+ucom-1
             do j=1, n
                 res(j + (i-1)*n) = A(i, j) * x(j)
+                print*,i, j, res(j + (i-1)*n),'->', (j + (i-1)*n)
             enddo
         enddo
       endif

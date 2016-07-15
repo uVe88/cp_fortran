@@ -1,198 +1,256 @@
-        program matriz
-        implicit none
-        include 'fpvm3.h'
+      program matriz
+      implicit none
+      include 'fpvm3.h'
         
-        integer ntask, info, mytid, mygid, i, m, blksize, row, col, up
-        integer down, MAXNTIDS, MAXROW, ATAG, BTAG, DIMTAG
-        integer r, blktam, mygtid
+      integer ntask, info, mytid, mygid, i, blqtam, row, col
+      integer uptid, downtid, dchatid, izqtid
+      integer ATAG, BTAG, AATAG, BBTAG
+      integer MAXNTIDS, DIMTAG, j, test
+      integer MAXR, MAXBLOQTAM, mygtid, nfilas, tgid, ttag
 
-c        /* Maximum number of children this program will spawn */
-        parameter(MAXNTIDS=100, MAXROW=10, ATAG=2, BTAG=3, DIMTAG=5)
-        parameter(r = 4, blktam = 4)
-	 integer child(MAXNTIDS-1)
-	 integer myrow(MAXROW)
-        real*8 a(blktam*blktam), b(blktam*blktam)
-        real*8 c(blktam*blktam), atmp(blktam*blktam)
+      parameter(MAXNTIDS=16)
+      parameter(ATAG=2,BTAG=3,AATAG=4,BBTAG=5,DIMTAG=6)
+      parameter(MAXR = 4, MAXBLOQTAM = 10)
+	    integer tids(MAXNTIDS-1)
+      real*8 a(MAXBLOQTAM*MAXBLOQTAM), b(MAXBLOQTAM*MAXBLOQTAM)
+      real*8 c(MAXBLOQTAM*MAXBLOQTAM), cprima(MAXBLOQTAM*MAXBLOQTAM)
 	 
-c       number of tasks to spawn, use 3 as the default
-        ntask = 2
+c     Obtengo el id de mi tarea
+      call pvmfmytid(mytid)
+      call pvmfcatchout(1,info)
 
-c       children task id array
+c     Verificamos que pvm ha iniciado bien.
+      if (mytid.lt.0) then
+        print* , 'Error, tid erroneo'
+        stop
+      endif
 
-        
-c       array of the tids in my row
-        
+c     Nos unimos al grupo mmult
+      call pvmfjoingroup('mmult', mygid)
 
-c       Obtengo el id de mi tarea
-        call pvmfmytid(mytid)
-c       pvm_advise(PvmRouteDirect)
-
-c       Verificamos que pvm ha iniciado bien.
-        if (mytid.lt.0) then
-c           print out the error
-            print* , 'Error, tid erroneo' 
-c           exit the program
-            stop
-        endif
-
-c       Nos unimos al grupo mmult
-        call pvmfjoingroup('mmult', mygid)
-
-        if (mygid.lt.0) then
-            print*,'Error al obtener el id de grupo'
-            call pvmfexit()
-            stop
-        endif
+      if (mygid.lt.0) then
+        print*,'Error al obtener el id de grupo'
+        call pvmfexit()
+        stop
+      endif
         
 c       /* if my group id is 0 then I must spawn the other tasks */
-        if (mygid.eq.0) then
-c           find out how many tasks to spawn
-            
-            m = r
-            blksize = blktam
-            
-c           make sure ntask is legal
-            ntask = m*m
-            if ((ntask.lt.1).or.(ntask.ge.MAXNTIDS)) then
-                print*,'ntask = ',ntask,' not valid'
-                call pvmflvgroup('mmult',info)
-                call pvmfexit(info)
-                stop
-            endif
+      if (mygid.eq.0) then
 
-c           no need to spawn if there is only one task
-            if (ntask.eq.1) go to 100
+c       Soy el root del grupo
+        print *,'Introduce el valor de nfilas r (entero):'
+        read *, nfilas
 
-c           /* spawn the child tasks */
-            call pvmfspawn('mmult',PVMTASKDEFAULT, '*', ntask-1, child
-     *,info)
-            
-c           /* make sure spawn succeeded */
-            if (info.ne.ntask-1) then
-                call pvmflvgroup('mmult', info)
-                call pvmfexit(info)
-                stop 
-            endif
-            
-c           send the matrix dimension
-            call pvmfinitsend(PVMDATADEFAULT,info)
-            call pvmfpack(INTEGER4, m, 1, 1, info)
-            call pvmfpack(INTEGER4, blksize, 1, 1, info)
-            call pvmfmcast(child, ntask-1, DIMTAG, info)
-        else
-c           recv the matrix dimension
-            call pvmfgettid('mmult', 0, mygtid)
-            call pvmfrecv(mygtid, DIMTAG, info)
-            call pvmfunpack(INTEGER4, m, 1, 1, info)
-            call pvmfunpack(INTEGER4, blksize, 1, 1, info)
-            ntask = m*m
-        endif
-c       make sure all tasks have joined the group */
+        print *,'Introduce el tamaño de bloque (entero):'
+        read *, blqtam
 
-c       barrier
-
-100     call pvmfbarrier('mmult',ntask, info)
-
-c        if (info.lt.0) then
-c            pvm_perror(argv[0])
-
-c        /* find the tids in my row */
-        do i=0, m
-            call pvmfgettid('mmult', (mygid/m)*m + i, mygtid)
-            myrow(i) = mygtid 
-        enddo
-c       find my block's row and column
-        row = mygid/m 
-        col = mod(mygid,m)
-c       calculate the neighbor's above and below
-	 
-	    if (row.gt.0) then
-        	call pvmfgettid('mmult', row-1, up)
-    	else
-        	call pvmfgettid('mmult', (m-1)*m+col, up)	   
+c       Asigno el numero de procesos de la malla y compruebo que las tareas están en los límites de máximos tids
+        ntask = nfilas*nfilas
+        if ((ntask.lt.1).or.(ntask.ge.MAXNTIDS)) then
+          print*,'ntask = ',ntask,' not valid'
+          call pvmflvgroup('mmult',info)
+          call pvmfexit(info)
+          stop
         endif
 
-	    if (row.eq.m-1) then
-	    	call pvmfgettid('mmult', col, down)
+c       Comprueba que el tamaña del bloque es menos que el máximo
+        if ((blqtam.lt.1).or.(blqtam.ge.MAXBLOQTAM)) then
+          print*,'ERROR bloqtam =',blqtam,'not valid;max:',MAXBLOQTAM
+          call pvmflvgroup('mmult',info)
+          call pvmfexit(info)
+          stop
+        endif
+
+c       Comprueba que el tamaña del bloque es menos que el máximo
+        if ((nfilas.lt.1).or.(nfilas.ge.MAXR)) then
+          print*,'ERROR r = ',nfilas,' not valid; max:', MAXR 
+          call pvmflvgroup('mmult',info)
+          call pvmfexit(info)
+          stop
+        endif
+
+c       Saltamos la propagación en caso de ser una única tarea.
+        if (ntask.eq.1) go to 100
+
+c       Propagamos todas las tareas menos unas que es la mia (root)
+        call pvmfspawn('matriz',PVMTASKDEFAULT,'*',ntask-1,tids,info)
+
+c       Comprobamos que se han lanzados todos los procesos de la malla
+        if (info.ne.ntask-1) then
+          print*,'ERROR!!!', info
+          call pvmflvgroup('mmult', info)
+          call pvmfexit(info)
+          stop
+        endif
+           
+c       Mandadamos la dimension de la matriz a todas las tareas
+        
+        call pvmfinitsend(PVMDATADEFAULT,info)
+        call pvmfpack(INTEGER4, nfilas, 1, 1, info)
+        call pvmfpack(INTEGER4, blqtam, 1, 1, info)
+        call pvmfmcast(ntask-1, tids, DIMTAG, info)
+        
+      else
+c       Soy miembro de la malla para pero no root
+c       Obtengo mi id de grupo
+
+        call pvmfgettid('mmult', 0, mygtid)
+        
+        
+c       Recibo los parámetros de la malla enviados por el root
+        call pvmfrecv(mygtid, DIMTAG, info)
+        call pvmfunpack(INTEGER4, nfilas, 1, 1, info)
+        call pvmfunpack(INTEGER4, blqtam, 1, 1, info)
+        
+c       Reinicio el número de tareas.       
+        ntask = nfilas*nfilas
+      endif
+
+c     Sincronizamos con barrier
+100   call pvmfbarrier('mmult',ntask, info)
+
+c     Busco mis bloques
+      row = mygid/nfilas+1
+      col = mod(mygid,nfilas)+1
+      
+
+c     Calculo mis vecinos de arriba y abajo 
+	    if (row.gt.1) then
+        call pvmfgettid('mmult', mygid-nfilas, uptid)
+      else
+       	call pvmfgettid('mmult', mygid+(nfilas*(nfilas-1)), uptid)
+        
+      endif
+      
+      if (row.lt.nfilas) then
+        call pvmfgettid('mmult', mygid+nfilas, downtid)
+      else
+       	call pvmfgettid('mmult', mygid-(nfilas*(nfilas-1)), downtid)   
+      endif
+
+c     Calculo mis vecinos de izq y dcha
+c     Calculo mi vecinos de izq
+	    if (col.gt.1) then
+        call pvmfgettid('mmult', mygid-1, izqtid)
+      else
+       	call pvmfgettid('mmult', mygid+nfilas-1, izqtid) 
+      endif
+c     Calculo mi vecino dcha
+	    if (col.eq.nfilas) then
+	   	  call pvmfgettid('mmult', mygid-nfilas+1, dchatid)
 	    else
-	    	call pvmfgettid('mmult', (row+1)*m+col, down)
-	    endif
+	   	  call pvmfgettid('mmult', mygid+1, dchatid)
+      endif
 
-c       initialize the blocks
-        call InitBlock(a, b, c, blksize, row, col)
-c        do the matrix multiply
+c      print*,'P:',mygid,'F:',row,'C:',col,'tid',mytid
+c      print*,'UP:',uptid,'DOWN:',downtid,'IZQ:',izqtid,'DCHA:',dchatid
+      
+      call pvmfbarrier('mmult',ntask, info)
+      
+c     Inicializo los bloques
+      call iniciarbloques(a, b, c, blqtam, row, col)
 
-        do i=0, m
-c           mcast the block of matrix A
-            if (col.eq.mod((row + i), m)) then
-                call pvmfinitsend(PVMDATADEFAULT,info)
-                call pvmfpack(REAL8, a, blksize*blksize, 1, info)
-                call pvmfmcast(myrow, m, (i+1)*ATAG, info)
-                call BlockMult(c,a,b,blksize)
-            else
-                call pvmfgettid('mmult',row*m+mod((row +i),m), mygtid)
-                call pvmfrecv(mygtid, (i+1)*ATAG, info)
-                call pvmfunpack(REAL8, a, blksize*blksize, 1, info)
-                call BlockMult(c,atmp,b,blksize)
-            endif
-c           rotate the columns of B
-            call pvmfinitsend(PVMDATADEFAULT,info)
-            call pvmfpack(REAL8, b, blksize*blksize, 1, info)
-            call pvmfsend(up, (i+1)*BTAG, info)
-            call pvmfrecv(down, (i+1)*BTAG, info)
-            call pvmfunpack(REAL8, b, blksize*blksize, 1, info)
-        enddo
+c     Calculos la multiplicación de la matriz
+      do i=1, nfilas-1
+      
+c     Alineación inicial y cálculo local y guardar en temporal
+        if (row.ne.1) then
+c     Los datos del bloque de la matriz a de las filas mayores que 1 debo mandarlo al procesador de mi izq y esperar los mios para computar
+          call pvmfinitsend(PVMDATADEFAULT,info)
+          call pvmfpack(REAL8, a, blqtam*blqtam, 1, info)
+          print*,'A - F:',row,'C:',col,'Envío A a:',izqtid
+          call pvmfsend(izqtid, i*ATAG, info)
+c     Espero los mios de mi derecha
 
-c       check it
-        do i=0, blksize*blksize 
-            if (a(i).ne.c(i)) then
-                print*,'Error a(', i,') ', a(i),' != c(', i,') ', c(i)
-            endif
-        enddo
+          call pvmfrecv(dchatid, i*ATAG, info)
+          call pvmfunpack(REAL8, a, blqtam*blqtam, 1, info)
+        endif
 
-        call pvmflvgroup('mmult', info)
-        call pvmfexit(info)
-        end
+        if (col.ne.1) then
+c     Los datos del bloque de la matriz b de las columnas mayores que uno las muevo hacia arriba n veces en funcion de su col n = col-1
+          call pvmfinitsend(PVMDATADEFAULT,info)
+          call pvmfpack(REAL8, b, blqtam*blqtam, 1, info)
+          print*,'B - F:',row,'C:',col,'Envío B a:',uptid, mytid
+          call pvmfsend(uptid, i*BTAG, info)
+c     Espero los datos del procesador de abajo
+          print*,'B - F:',row,'C:',col,'Espero datos de:',dchatid, mytid
+          call pvmfrecv(downtid, i*BTAG, info)
+          call pvmfunpack(REAL8, b, blqtam*blqtam, 1, info)
+          print*,'B - F:',row,'C:',col,'Recibo B de:',dchatid
+        endif
+
+        print*, 'Computo AB'
+c     Calculamos con los datos ordenados en cada procesador
+        call multiplicarbloque(c,a,b,blqtam)
+
+c     Alineación posterior (Movel bloques A y B)
+
+c     Movemos todos los bloques de data A al proc de la izq
+        call pvmfinitsend(PVMDATADEFAULT,info)
+        call pvmfpack(REAL8, b, blqtam*blqtam, 1, info)
+        print*,'F:',row,'C:',col,'Envío a:',izqtid
+        call pvmfsend(izqtid, i*AATAG, info)
+
+c     Movemos todos los bloques de datos B al proc de arriba        
+        call pvmfinitsend(PVMDATADEFAULT,info)
+        call pvmfpack(REAL8, b, blqtam*blqtam, 1, info)
+        print*,'F:',row,'C:',col,'Envío a:',uptid
+        call pvmfsend(uptid, i*BBTAG, info)
+c     Esperamos los bloques de A y B
+        call pvmfrecv(dchatid, i*AATAG, info)
+        call pvmfunpack(REAL8, a, blqtam*blqtam, 1, info)
+        call pvmfrecv(downtid, i*BBTAG, info)
+        call pvmfunpack(REAL8, b, blqtam*blqtam, 1, info)
+
+        print*, 'Computo AABB'
+        call multiplicarbloque(c,a,b,blqtam)
+      enddo
+
+      call pvmflvgroup('mmult',info)
+      call pvmfexit(info)
+    
+      print*, 'Fin programa'
+      stop
+      end
         
-        subroutine InitBlock (a, b, c, blk, row, col)
-        implicit none
+      subroutine iniciarbloques (a, b, c, blk, row, col)
+      implicit none
 	    real*8 a(blk*blk), b(blk*blk), c(blk*blk)
-        integer blk, row, col
-        integer len, ind
-        integer i,j
+      integer blk, row, col
+      integer len
+      integer i,j
         
-        len = blk*blk
-        do ind=1, len 
-            a(ind)=ind*(row*col+1)**2/blk**2
-            c(ind) = 0.0
+      len = blk*blk
+      do i=1, len 
+        a(i)=i*(row*col+1)**2/blk**2
+        c(i) = 0.0
+      enddo
+      do i=1,blk
+        do j=1, blk
+          if (row.eq.col) then
+            if (i.eq.j) then
+              b(j*blk+i)=1.0
+            else
+              b(j*blk+i)=0.0
+            endif
+          else
+            b(j*blk+i) = 0.0
+          endif
         enddo
-        do i=1,blk
-            do j=1, blk
-                if (row.eq.col) then
-                    if (i.eq.j) then
-                        b(j*blk+i)=1.0
-                    else
-                        b(j*blk+i)=0.0
-                    endif
-                else
-                    b(j*blk+i) = 0.0
-                endif
-            enddo
-        enddo
-        end
+      enddo
+      end
 
-        subroutine BlockMult(c, a, b, blk) 
-        implicit none
-        integer blk
-        integer i,j,k
-        real*8 a(blk*blk), b(blk*blk), c(blk*blk)
+      subroutine multiplicarbloque(c, a, b, blk) 
+      implicit none
+      integer blk
+      integer i,j,k
+      real*8 a(blk*blk), b(blk*blk), c(blk*blk)
 
-        do i=1, blk
-            do j=1,blk
-                do k=1,blk
-                    c(i*blk+j) =c(i*blk+j) + (a(i*blk+k) * b(k*blk+j))
-                enddo
-            enddo
+      do i=1, blk
+        do j=1,blk
+          do k=1,blk
+            c(i*blk+j) =c(i*blk+j) + (a(i*blk+k) * b(k*blk+j))
+          enddo
         enddo
-        end
-        
+      enddo
+      end

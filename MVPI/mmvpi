@@ -16,13 +16,8 @@ LFLAGS	=	-L$(PVM_ROOT)/lib/$(PVM_ARCH)
 INCL    =       -I/usr/include
 
 
-all: escribe norma jacobi
+all: mvpi
 
-escribe: escribe.f
-	$(F77) -c $(FFLAGS) $(INCL) escribe.f
-norma: norma.f
-	$(F77) -c $(FFLAGS) $(INCL) norma.f
-
-jacobi: jacobi.f norma.o escribe.o
-	$(F77) $(FFLAGS) -o $@ $@.f norma.o escribe.o $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
+mvpi: mvpi.f
+	$(F77) $(FFLAGS) -o $@ $@.f $(LFLAGS) $(FLIBS) $(GLIB) $(INCL)
 	mv $@ $(XDIR)
