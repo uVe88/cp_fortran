@@ -10,7 +10,7 @@ c ---------------------------------------------------------
 	  real*8 A(maxm,maxm)
 	  real*8 b(maxm)
 	  real*8 btemp(maxm)
-	  integer m,n, filaini, filafin, k,z,fin
+	  integer m,n, filaini, filafin, filapadre,filaact, k,z,fin
 	  integer tids(maxntids)
 	  real*8 sum,sumx
 	  real*8 xsol(maxm),x(maxm)
@@ -49,10 +49,12 @@ c	  mandamos los dato iniciales a los procesos
 	       filafin = filaini+filasproc -1 
 c		   Mandamos filaini y filafin
 		  
-
+           
 	       call pvmfinitsend( PVMDATARAW, info)
+		   call pvmfpack(INTEGER4,filaini,1,1,info)
            call pvmfpack( INTEGER4, filasproc, 1, 1, info)
 		   call pvmfpack( INTEGER4,n,1,1,info)
+		   
 c Enviamos el numero de tareas para hacer los barriers
 		   call pvmfpack( INTEGER4,numt,1,1,info)
 c  Enviamos el gnum del parent pava el pvmfreduce
@@ -84,13 +86,16 @@ c		Inicializamos el resultado a cero
 	     
 	    enddo
         filafin=filafin+resto
+		filapadre = 1
 
       else
 c     Si tiene padre hacemos el proceso de los hijos  
 	  	print *,'iniciando recepcion de datos'
 c 	    Recibimos los datos
 		call pvmfrecv(iptid,2,info)
-c       Recibimos
+
+        call pvmfunpack(INTEGER4,filapadre,1,1,info)  
+		print *,'filapadre',filapadre   
         call pvmfunpack(INTEGER4, filasproc, 1, 1, info)
 		call pvmfunpack(INTEGER4,n,1,1,info)
 		call pvmfunpack( INTEGER4,numt,1,1,info)
@@ -117,8 +122,7 @@ c 	Hacemos un scatter de b y de la diagonal
       
 
 	   fin = 0
-c       do while ( fin .eq. 0)
-       do z=1,3
+      do while ( fin .eq. 0)
 c Hacemos un broadcast de toda la solucion x
       print *,'Entra en bucle'
 	  print *,gnum,root
@@ -126,26 +130,31 @@ c Hacemos un broadcast de toda la solucion x
 	       call pvmfinitsend(PVMDATARAW,info)
 		   call pvmfpack(REAL8,x,n,1,info)
 		   call pvmfbcast('test',1,info) 
-           print *,'xhijo:',x(1),x(2),x(3),x(4)		
+           print *,'xpadre:',x(1),x(2),x(3),x(4)		
 	  else
 	 	   call pvmfrecv(iptid,1,info)
 		   call pvmfunpack(REAL8,x,n,1,info)
-		   print *,'xpadre:',x(1),x(2),x(3),x(4)			  
+		   print *,'xhijo:',x(1),x(2),x(3),x(4)			  
 	  endif
      
 c Calculamos la solucion parcial con los datos
       	
       print *,'filaini: ',filaini,'filafin: ',filafin
+	  print *,'filapadre: ',filapadre
+	  print *,filasproc
 c	  call escribe(A,maxm,filaini,filafin) 
       do i=filaini,filafin
 	    sumx=0
+		filaact = filaini+filapadre-1
 		do j=1,n
-		  if (j .ne. i) then
-		     sumx = sumx+A(i,j)*x(j)
+		  if (j .ne. filaact) then
+		     sumx = sumx+(A(i,j)*x(j))
+			 print *,'parcial j',j,sumx,A(i,j),x(j)
 		  endif
 		enddo
-		print *,'parcial',b(i),sumx,A(i,i)
-		x(i) = (b(i)-sumx/A(i,i))
+		print *,'parcial i',i,b(i),sumx,A(i,i)
+		x(i) = (b(i)-sumx/A(i,filaact))
+		print *,'x parcial',filapadre,x(i)
 	  enddo	
 c Recogemos las soluciones parciales en un vector
 
@@ -163,8 +172,6 @@ c   Calculo la norma
 
         
 	   endif
-  
-
 
       enddo
 	  			
